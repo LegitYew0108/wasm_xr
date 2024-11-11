@@ -33,6 +33,7 @@ pub async fn run() -> Result<(), JsValue>{
                 let default_val = document.create_element("h1")?;
                 default_val.set_text_content(Some("[Error Page] Could not create WebXR session"));
                 body.append_child(&default_val)?;
+                return Ok(());
             }
         }
         else{
