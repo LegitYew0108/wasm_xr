@@ -20,7 +20,6 @@ pub async fn run() -> Result<(), JsValue>{
     let window = web_sys::window().expect("no global `window` exists");
     let document = window.document().expect("should have a document on window");
 
-    let (webgl_tx, webgl_rx) = oneshot::channel::<GlProgram>();
 
     console::log_1(&"Starting WebXR support check".into());
     let xrsystem = window.navigator().xr();
@@ -36,9 +35,8 @@ pub async fn run() -> Result<(), JsValue>{
             if XrSession::instanceof(&session_jsval){
                 console::log_1(&"Session create succeed".into());
                 let session = XrSession::unchecked_from_js(session_jsval);
-                create_webgl2_context(window,&document,webgl_tx).await;
+                create_webgl2_context(window,&document,session).await;
                 console::log_1(&"webgl2 document created".into());
-                run_session(session,webgl_rx).await?
             }
             else{
                 console::log_1(&"WebXR session could not created".into());
@@ -65,40 +63,6 @@ pub async fn run() -> Result<(), JsValue>{
         default_val.set_text_content(Some("[Error Page] Could not determine WebXR support"));
         body.append_child(&default_val)?;
         return Ok(());
-    }
-    Ok(())
-}
-
-pub async fn run_session(session: XrSession, rx: oneshot::Receiver::<GlProgram>) -> Result<(), JsValue>{
-    session.add_event_listener_with_callback("end", &js_sys::Function::new_no_args("on_session_end"))?;
-    let gl_program = rx.await.unwrap();
-    let gl = gl_program.gl;
-    let program = gl_program.program;
-    let render_state = XrRenderStateInit::new();
-    let webgl_layer = XrWebGlLayer::new_with_web_gl2_rendering_context(&session, &gl).unwrap();
-    render_state.set_base_layer(Some(&webgl_layer));
-    session.update_render_state_with_state(&render_state);
-    let reference_space = JsFuture::from(session.request_reference_space(web_sys::XrReferenceSpaceType::Local)).await?;
-    if XrReferenceSpace::instanceof(&reference_space){
-        let reference_space = XrReferenceSpace::unchecked_from_js(reference_space);
-        let offset_space = XrRigidTransform::new()?;
-        reference_space.get_offset_reference_space(&offset_space);
-
-        let animation_loop = Rc::new(RefCell::new(None::<Closure<dyn FnMut(f64, XrFrame)>>));
-        //初期状態はNone
-        //RefCellはClosureを後で自分自身を参照できるようにするためのラッパー
-        //Rcは参照カウントを増やすためのラッパー
-        
-        //クローンを作成
-        let animation_loop_clone = Rc::clone(&animation_loop);
-        let session_clone = session.clone();
-        *animation_loop.borrow_mut() = Some(Closure::wrap(Box::new(move |time: f64, frame: XrFrame|{
-            render_frame(time, &frame, &reference_space, &session_clone, &gl, &program);
-            session_clone.request_animation_frame(animation_loop_clone.borrow().as_ref().unwrap().as_ref().unchecked_ref::<js_sys::Function>());
-        }) as Box<dyn FnMut(f64, XrFrame)>));
-
-        //最初のアニメーションフレームをリクエスト
-        let animation_frame_request_id = session.request_animation_frame(&animation_loop.borrow().as_ref().unwrap().as_ref().unchecked_ref::<js_sys::Function>());
     }
     Ok(())
 }
@@ -175,7 +139,8 @@ enum Shader{
 }
 
 
-pub async fn create_webgl2_context(window: Window,document: &Document,webgl_tx: oneshot::Sender::<GlProgram>){
+#[wasm_bindgen]
+pub async fn create_webgl2_context(window: Window,document: &Document,session: XrSession){
     let canvas = document.query_selector("canvas").unwrap().unwrap();
     // HtmlCanvasElementを取得
     let Ok(canvas_element) = canvas.dyn_into::<web_sys::HtmlCanvasElement>() else{
@@ -418,7 +383,37 @@ pub async fn create_webgl2_context(window: Window,document: &Document,webgl_tx: 
         let index_size = indices.len() as i32;
         gl.bind_buffer(WebGl2RenderingContext::ELEMENT_ARRAY_BUFFER, Some(&index_buffer));
         let gl_program = GlProgram{gl,program};
-        webgl_tx.send(gl_program);
+
+
+        session.add_event_listener_with_callback("end", &js_sys::Function::new_no_args("on_session_end")).unwrap();
+        let gl = gl_program.gl;
+        let program = gl_program.program;
+        let render_state = XrRenderStateInit::new();
+        let webgl_layer = XrWebGlLayer::new_with_web_gl2_rendering_context(&session, &gl).unwrap();
+        render_state.set_base_layer(Some(&webgl_layer));
+        session.update_render_state_with_state(&render_state);
+        let reference_space = JsFuture::from(session.request_reference_space(web_sys::XrReferenceSpaceType::Local)).await.unwrap();
+        if XrReferenceSpace::instanceof(&reference_space){
+            let reference_space = XrReferenceSpace::unchecked_from_js(reference_space);
+            let offset_space = XrRigidTransform::new().unwrap();
+            reference_space.get_offset_reference_space(&offset_space);
+
+            let animation_loop = Rc::new(RefCell::new(None::<Closure<dyn FnMut(f64, XrFrame)>>));
+            //初期状態はNone
+            //RefCellはClosureを後で自分自身を参照できるようにするためのラッパー
+            //Rcは参照カウントを増やすためのラッパー
+            
+            //クローンを作成
+            let animation_loop_clone = Rc::clone(&animation_loop);
+            let session_clone = session.clone();
+            *animation_loop.borrow_mut() = Some(Closure::wrap(Box::new(move |time: f64, frame: XrFrame|{
+                render_frame(time, &frame, &reference_space, &session_clone, &gl, &program);
+                session_clone.request_animation_frame(animation_loop_clone.borrow().as_ref().unwrap().as_ref().unchecked_ref::<js_sys::Function>());
+            }) as Box<dyn FnMut(f64, XrFrame)>));
+
+            //最初のアニメーションフレームをリクエスト
+            let animation_frame_request_id = session.request_animation_frame(&animation_loop.borrow().as_ref().unwrap().as_ref().unchecked_ref::<js_sys::Function>());
+    }
     });
 }
 
