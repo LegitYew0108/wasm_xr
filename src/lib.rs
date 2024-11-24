@@ -138,7 +138,15 @@ enum Shader{
 #[wasm_bindgen]
 pub async fn create_webgl2_context(window: Window,document: &Document,session: XrSession){
     console::log_1(&"create webgl2 context start".into());
-    let canvas = document.query_selector("canvas").unwrap().unwrap();
+    let Ok(canvas) = document.query_selector("canvas") else{
+        console::log_1(&"Error: could not get canvas".into());
+        panic!();
+    };
+    let Some(canvas) = canvas else{
+        console::log_1(&"Error: canvas was none".into());
+        panic!();
+    };
+    console::log_1(&"got canvas".into());
     // HtmlCanvasElementを取得
     let Ok(canvas_element) = canvas.dyn_into::<web_sys::HtmlCanvasElement>() else{
         console::log_1(&"Error: could not convert to HtmlCanvasElement".into());
