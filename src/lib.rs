@@ -2,8 +2,7 @@ use wasm_bindgen::prelude::*;
 use futures::stream::StreamExt;
 use web_sys::{console,Response,Window,Document, XrFrame,XrSessionMode,HtmlCanvasElement,XrRenderStateInit,XrView, XrReferenceSpace,XrWebGlLayer, XrRigidTransform, XrSession,WebGl2RenderingContext};
 use wasm_bindgen_futures::JsFuture;
-use js_sys::Function;
-use futures::channel::{oneshot, mpsc};
+use futures::channel::mpsc;
 use gl_matrix::common::*;
 use gl_matrix::{vec3,mat4,quat};
 use std::rc::Rc;
@@ -68,8 +67,8 @@ pub async fn run() -> Result<(), JsValue>{
 }
 
 #[wasm_bindgen]
-pub fn render_frame(time: f64, frame: &XrFrame, reference_space: &XrReferenceSpace, session: &XrSession, gl: &WebGl2RenderingContext, program: &web_sys::WebGlProgram){
-    let pose = frame.get_viewer_pose(&reference_space);
+pub fn render_frame(_time: f64, frame: &XrFrame, reference_space: &XrReferenceSpace, _session: &XrSession, gl: &WebGl2RenderingContext, program: &web_sys::WebGlProgram){
+    let pose = frame.get_viewer_pose(reference_space);
     if let Some(pose) = pose{
         let gl_layer = frame.session().render_state().base_layer().unwrap();
         gl.bind_framebuffer(WebGl2RenderingContext::FRAMEBUFFER, gl_layer.framebuffer().as_ref());
@@ -120,9 +119,8 @@ pub fn render_scene(gl: &WebGl2RenderingContext, view: &XrView, program: &web_sy
     let mut view_matrix = mat4::create();
     mat4::from_rotation_translation(&mut view_matrix, &view_quat, &camera_position);
 
-    let mut projection = mat4::create();
     let projection_from_view = view.projection_matrix();
-    projection = projection_from_view.try_into().unwrap();
+    let projection:Mat4 = projection_from_view.try_into().unwrap();
 
     let model_location = gl.get_uniform_location(program, "model");
     let view_location = gl.get_uniform_location(program, "view");
@@ -381,7 +379,7 @@ pub async fn create_webgl2_context(window: Window,document: &Document,session: X
         gl.vertex_attrib_pointer_with_i32(vertex_attrib_location as u32, VERTEX_SIZE, WebGl2RenderingContext::FLOAT, false, STRIDE, POSITION_OFFSET);
         gl.vertex_attrib_pointer_with_i32(color_attrib_location as u32, COLOR_SIZE, WebGl2RenderingContext::FLOAT, false, STRIDE, COLOR_OFFSET);
 
-        let index_size = indices.len() as i32;
+        let _index_size = indices.len() as i32;
         gl.bind_buffer(WebGl2RenderingContext::ELEMENT_ARRAY_BUFFER, Some(&index_buffer));
         let gl_program = GlProgram{gl,program};
 
@@ -413,7 +411,7 @@ pub async fn create_webgl2_context(window: Window,document: &Document,session: X
             }) as Box<dyn FnMut(f64, XrFrame)>));
 
             //最初のアニメーションフレームをリクエスト
-            let animation_frame_request_id = session.request_animation_frame(&animation_loop.borrow().as_ref().unwrap().as_ref().unchecked_ref::<js_sys::Function>());
+            let _animation_frame_request_id = session.request_animation_frame(animation_loop.borrow().as_ref().unwrap().as_ref().unchecked_ref::<js_sys::Function>());
     }
     });
 }
