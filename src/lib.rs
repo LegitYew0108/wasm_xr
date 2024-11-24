@@ -36,7 +36,7 @@ pub async fn run() -> Result<(), JsValue>{
             if XrSession::instanceof(&session_jsval){
                 console::log_1(&"Session create succeed".into());
                 let session = XrSession::unchecked_from_js(session_jsval);
-                create_webgl2_context(window,&document,webgl_tx);
+                create_webgl2_context(window,&document,webgl_tx).await;
                 console::log_1(&"webgl2 document created".into());
                 run_session(session,webgl_rx).await?
             }
