@@ -37,6 +37,7 @@ pub async fn run() -> Result<(), JsValue>{
                 console::log_1(&"Session create succeed".into());
                 let session = XrSession::unchecked_from_js(session_jsval);
                 create_webgl2_context(window,&document,webgl_tx);
+                console::log_1(&"webgl2 document created".into());
                 run_session(session,webgl_rx).await?
             }
             else{
@@ -68,6 +69,7 @@ pub async fn run() -> Result<(), JsValue>{
     Ok(())
 }
 
+#[wasm_bindgen]
 pub async fn run_session(session: XrSession, rx: oneshot::Receiver::<GlProgram>) -> Result<(), JsValue>{
     session.add_event_listener_with_callback("end", &js_sys::Function::new_no_args("on_session_end"))?;
     let gl_program = rx.await.unwrap();
@@ -102,6 +104,7 @@ pub async fn run_session(session: XrSession, rx: oneshot::Receiver::<GlProgram>)
     Ok(())
 }
 
+#[wasm_bindgen]
 pub fn render_frame(time: f64, frame: &XrFrame, reference_space: &XrReferenceSpace, session: &XrSession, gl: &WebGl2RenderingContext, program: &web_sys::WebGlProgram){
     let pose = frame.get_viewer_pose(&reference_space);
     if let Some(pose) = pose{
@@ -127,6 +130,7 @@ pub fn render_frame(time: f64, frame: &XrFrame, reference_space: &XrReferenceSpa
     }
 }
 
+#[wasm_bindgen]
 pub fn render_scene(gl: &WebGl2RenderingContext, view: &XrView, program: &web_sys::WebGlProgram){
     let mut scale = mat4::create();
     let scale_clone = scale;
@@ -172,6 +176,7 @@ enum Shader{
 }
 
 
+#[wasm_bindgen]
 pub async fn create_webgl2_context(window: Window,document: &Document,webgl_tx: oneshot::Sender::<GlProgram>){
     let canvas = document.query_selector("canvas").unwrap().unwrap();
     // HtmlCanvasElementを取得
@@ -419,7 +424,8 @@ pub async fn create_webgl2_context(window: Window,document: &Document,webgl_tx: 
     });
 }
 
-async fn create_f32_buffer(buffer_type: u32, typed_data_array: &[f32], gl: &WebGl2RenderingContext) -> Result<web_sys::WebGlBuffer, JsValue>{
+#[wasm_bindgen]
+pub async fn create_f32_buffer(buffer_type: u32, typed_data_array: &[f32], gl: &WebGl2RenderingContext) -> Result<web_sys::WebGlBuffer, JsValue>{
     let buffer = gl.create_buffer().unwrap();
     gl.bind_buffer(buffer_type, Some(&buffer));
     let array = js_sys::Float32Array::from(typed_data_array);
@@ -431,7 +437,8 @@ async fn create_f32_buffer(buffer_type: u32, typed_data_array: &[f32], gl: &WebG
     Ok(buffer)
 }
 
-async fn create_u16_buffer(buffer_type: u32, typed_data_array: &[u16], gl: &WebGl2RenderingContext) -> Result<web_sys::WebGlBuffer, JsValue>{
+#[wasm_bindgen]
+pub async fn create_u16_buffer(buffer_type: u32, typed_data_array: &[u16], gl: &WebGl2RenderingContext) -> Result<web_sys::WebGlBuffer, JsValue>{
     let buffer = gl.create_buffer().unwrap();
     gl.bind_buffer(buffer_type, Some(&buffer));
     let array = js_sys::Uint16Array::from(typed_data_array);
