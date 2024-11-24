@@ -33,8 +33,6 @@ pub async fn run() -> Result<(), JsValue>{
             let session_jsval = JsFuture::from(xrsystem.request_session(XrSessionMode::ImmersiveVr)).await?;
             if XrSession::instanceof(&session_jsval){
                 let session = XrSession::unchecked_from_js(session_jsval);
-                console::log_1(&"webgl2 document start".into());
-                console::log_1(&"Session create succeed".into());
                 create_webgl2_context(window,&document,session).await;
             }
             else{
