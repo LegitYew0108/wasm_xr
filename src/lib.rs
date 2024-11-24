@@ -69,7 +69,6 @@ pub async fn run() -> Result<(), JsValue>{
     Ok(())
 }
 
-#[wasm_bindgen]
 pub async fn run_session(session: XrSession, rx: oneshot::Receiver::<GlProgram>) -> Result<(), JsValue>{
     session.add_event_listener_with_callback("end", &js_sys::Function::new_no_args("on_session_end"))?;
     let gl_program = rx.await.unwrap();
@@ -176,7 +175,6 @@ enum Shader{
 }
 
 
-#[wasm_bindgen]
 pub async fn create_webgl2_context(window: Window,document: &Document,webgl_tx: oneshot::Sender::<GlProgram>){
     let canvas = document.query_selector("canvas").unwrap().unwrap();
     // HtmlCanvasElementを取得
