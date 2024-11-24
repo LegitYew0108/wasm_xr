@@ -33,8 +33,8 @@ pub async fn run() -> Result<(), JsValue>{
             console::log_1(&"WebXR is supported".into());
             let session_jsval = JsFuture::from(xrsystem.request_session(XrSessionMode::ImmersiveVr)).await?;
             if XrSession::instanceof(&session_jsval){
-                console::log_1(&"Session create succeed".into());
                 let session = XrSession::unchecked_from_js(session_jsval);
+                console::log_1(&"Session create succeed".into());
                 create_webgl2_context(window,&document,session).await;
                 console::log_1(&"webgl2 document created".into());
             }
@@ -141,6 +141,7 @@ enum Shader{
 
 #[wasm_bindgen]
 pub async fn create_webgl2_context(window: Window,document: &Document,session: XrSession){
+    console::log_1(&"create webgl2 context start".into());
     let canvas = document.query_selector("canvas").unwrap().unwrap();
     // HtmlCanvasElementを取得
     let Ok(canvas_element) = canvas.dyn_into::<web_sys::HtmlCanvasElement>() else{
