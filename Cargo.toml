@@ -14,5 +14,3 @@ gl_matrix = "0.0.2"
 
 [lib]
 crate-type = ["cdylib"]
-
-wasm-opt = false
