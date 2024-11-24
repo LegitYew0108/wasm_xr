@@ -35,8 +35,8 @@ pub async fn run() -> Result<(), JsValue>{
             if XrSession::instanceof(&session_jsval){
                 let session = XrSession::unchecked_from_js(session_jsval);
                 console::log_1(&"Session create succeed".into());
+                console::log_1(&"webgl2 document start".into());
                 create_webgl2_context(window,&document,session).await;
-                console::log_1(&"webgl2 document created".into());
             }
             else{
                 console::log_1(&"WebXR session could not created".into());
