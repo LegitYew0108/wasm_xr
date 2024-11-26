@@ -342,6 +342,8 @@ pub async fn create_webgl2_context(window: &Window, document: &Document)->Result
     gl.vertex_attrib_pointer_with_i32(color_attrib_location as u32, COLOR_SIZE, WebGl2RenderingContext::FLOAT, false, STRIDE, COLOR_OFFSET);
 
     gl.bind_buffer(WebGl2RenderingContext::ELEMENT_ARRAY_BUFFER, Some(&index_buffer));
+    gl.enable(WebGl2RenderingContext::DEPTH_TEST);
+    gl.enable(WebGl2RenderingContext::CULL_FACE);
 
     let gl_program = GlProgram{gl, program};
     Ok(gl_program)
