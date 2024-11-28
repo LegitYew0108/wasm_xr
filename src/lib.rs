@@ -30,9 +30,15 @@ pub async fn run() -> Result<(), JsValue>{
     let document = window.document().expect("should have a document on window");
     let xrsystem = window.navigator().xr();
     let Some(xrsession) = webxr_available(&xrsystem,&document).await? else{
+        console::log_1(&"WebXR is not available".into());
+        display_error_page(&document, "WebXR is not available").await?;
         return Ok(());
     };
-    let gl_program = create_webgl2_context(&window, &document).await?;
+    let gl = create_webgl2_context(&document).await?;
+    console::log_1(&"created webgl2 context".into());
+    wasm_bindgen_futures::JsFuture::from(gl.make_xr_compatible()).await?;
+    console::log_1(&"made webgl2 context xr compatible".into());
+    let gl_program = ready_webgl2_context(&window, &document,gl).await?;
     console::log_1(&"created webgl2 context".into());
     
     create_webxr_session(xrsession, gl_program.gl, gl_program.program).await;
@@ -196,8 +202,31 @@ pub struct Shader{
 }
 
 #[wasm_bindgen]
-pub async fn create_webgl2_context(window: &Window, document: &Document)->Result<GlProgram ,JsValue>{
+pub async fn create_webgl2_context(document: &Document)->Result<WebGl2RenderingContext,JsValue>{
+    console::log_1(&"Try to get canvas".into());
+    let Some(canvas) = document.query_selector("canvas")? else{
+        console::log_1(&"[Error] canvas was none. Please check html file.".into());
+        display_error_page(document,"canvas was none.").await?;
+        return Err(JsValue::null());
+    };
+    let canvas = canvas.dyn_into::<web_sys::HtmlCanvasElement>()?;
+    console::log_1(&"Got canvas".into());
 
+    canvas.set_width(1920);
+    canvas.set_height(1080);
+
+    let Some(gl) = canvas.get_context("webgl2")? else{
+        console::log_1(&"[Error] Could not get webgl2 context.".into());
+        display_error_page(document,"Could not get webgl2 context.").await?;
+        return Err(JsValue::null());
+    };
+
+    let gl = gl.dyn_into::<WebGl2RenderingContext>()?;
+    Ok(gl)
+}
+
+#[wasm_bindgen]
+pub async fn ready_webgl2_context(window: &Window, document: &Document, gl: WebGl2RenderingContext)->Result<GlProgram ,JsValue>{
     let (shader_tx, mut shader_rx) = mpsc::channel::<ShaderVariant>(32);
 
     let shaders = async move{
@@ -264,26 +293,6 @@ pub async fn create_webgl2_context(window: &Window, document: &Document)->Result
             };
         }
     });
-
-    console::log_1(&"Try to get canvas".into());
-    let Some(canvas) = document.query_selector("canvas")? else{
-        console::log_1(&"[Error] canvas was none. Please check html file.".into());
-        display_error_page(document,"canvas was none.").await?;
-        return Err(JsValue::null());
-    };
-    let canvas = canvas.dyn_into::<web_sys::HtmlCanvasElement>()?;
-    console::log_1(&"Got canvas".into());
-
-    canvas.set_width(1920);
-    canvas.set_height(1080);
-
-    let Some(gl) = canvas.get_context("webgl2")? else{
-        console::log_1(&"[Error] Could not get webgl2 context.".into());
-        display_error_page(document,"Could not get webgl2 context.").await?;
-        return Err(JsValue::null());
-    };
-
-    let gl = gl.dyn_into::<WebGl2RenderingContext>()?;
 
     let shader = shaders.await;
     let program = compile_shader(&gl, &shader.vertex_shader.unwrap(), &shader.fragment_shader.unwrap()).await?;
