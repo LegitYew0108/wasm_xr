@@ -2,7 +2,7 @@ use wasm_bindgen::prelude::*;
 use futures::stream::StreamExt;
 use web_sys::*;
 use wasm_bindgen_futures::JsFuture;
-use futures::channel::mpsc;
+use futures::channel::{oneshot, mpsc};
 use gl_matrix::common::*;
 use gl_matrix::{vec3,mat4,quat};
 use std::rc::Rc;
@@ -28,6 +28,25 @@ pub async fn run() -> Result<(), JsValue>{
 
     let window = web_sys::window().expect("no global `window` exists");
     let document = window.document().expect("should have a document on window");
+
+    let (mut button_tx,mut button_rx) = mpsc::channel::<()>(32);
+    let body = document.body().expect("document doesn't have body.");
+    let button = document.create_element("button")?.dyn_into::<HtmlButtonElement>()?;
+    button.set_inner_text("Start WebXR");
+    let button_clone = button.clone();
+    let onclick_func = Closure::wrap(Box::new(move ||{
+        button_clone.set_inner_text("WebXR is starting...");
+        loop{
+            let Err(_) = button_tx.try_send(()) else{
+                break;
+            };
+        }
+    })as Box<dyn FnMut()>);
+    button.set_onclick(Some(onclick_func.as_ref().unchecked_ref::<js_sys::Function>()));
+    let _ = body.append_child(&button)?;
+
+    button_rx.next().await;
+    
     let xrsystem = window.navigator().xr();
     let Some(xrsession) = webxr_available(&xrsystem,&document).await? else{
         console::log_1(&"WebXR is not available".into());
