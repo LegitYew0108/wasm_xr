@@ -23,12 +23,75 @@ impl wasm_bindgen::describe::WasmDescribe for GlProgram{
     }
 }
 
+pub struct Logger{
+    last_time: f64,
+    frame_count: u32,
+    performance: Performance,
+}
+
+impl Logger{
+    fn new(performance:Performance)->Self{
+        Logger{
+            last_time: performance.now(),
+            frame_count: 0,
+            performance,
+        }
+    }
+
+    fn track_frame(&mut self){
+        self.frame_count += 1;
+        let now = self.performance.now();
+        let elapsed = now - self.last_time;
+
+        if elapsed > 1000.0{
+            self.log_fps();
+            self.last_time = now;
+            self.frame_count = 0;
+        }
+    }
+
+    fn log_fps(&self){
+        let fps = self.frame_count as f64 / (self.performance.now() - self.last_time) * 1000.0;
+        console::log_1(&format!("FPS: {}", fps).into());
+    }
+
+    fn log_memory_usage(&self) {
+        // メモリ情報の取得
+        if let Ok(memory) = js_sys::Reflect::get(&self.performance, &"memory".into()) {
+            if let Some(memory) = memory.dyn_ref::<js_sys::Object>() {
+                let js_heap_size_limit = js_sys::Reflect::get(memory, &"jsHeapSizeLimit".into())
+                    .unwrap_or_else(|_| 0.into())
+                    .as_f64()
+                    .unwrap_or(0.0);
+
+                let total_js_heap_size = js_sys::Reflect::get(memory, &"totalJSHeapSize".into())
+                    .unwrap_or_else(|_| 0.into())
+                    .as_f64()
+                    .unwrap_or(0.0);
+
+                let used_js_heap_size = js_sys::Reflect::get(memory, &"usedJSHeapSize".into())
+                    .unwrap_or_else(|_| 0.into())
+                    .as_f64()
+                    .unwrap_or(0.0);
+
+                console::log_1(&format!(
+                    "Memory Usage:\nHeap Size Limit: {:.2} MB\nTotal JS Heap Size: {:.2} MB\nUsed JS Heap Size: {:.2} MB",
+                    js_heap_size_limit / 1_048_576.0,
+                    total_js_heap_size / 1_048_576.0,
+                    used_js_heap_size / 1_048_576.0
+                ).into());
+            }
+        }
+    }
+}
+
 #[wasm_bindgen(start)]
 pub async fn run() -> Result<(), JsValue>{
 
     let window = web_sys::window().expect("no global `window` exists");
     let document = window.document().expect("should have a document on window");
 
+    let performance = window.performance().expect("should have a performance on window");
     let (mut button_tx,mut button_rx) = mpsc::channel::<()>(32);
     let body = document.body().expect("document doesn't have body.");
     let button = document.create_element("button")?.dyn_into::<HtmlButtonElement>()?;
@@ -60,7 +123,7 @@ pub async fn run() -> Result<(), JsValue>{
     let gl_program = ready_webgl2_context(&window, &document,gl).await?;
     console::log_1(&"created webgl2 context".into());
     
-    create_webxr_session(xrsession, gl_program.gl, gl_program.program).await;
+    create_webxr_session(xrsession, gl_program.gl, gl_program.program,performance).await;
     Ok(())
 }
 
@@ -73,6 +136,7 @@ pub async fn display_error_page(document: &Document, error_msg: &str) -> Result<
     let _ = body.append_child(&default_val)?;
     Ok(())
 }
+
 
 #[wasm_bindgen]
 pub async fn webxr_available(xrsystem: &XrSystem,document: &Document)->Result<Option<XrSession>,JsValue>{
@@ -109,7 +173,7 @@ pub async fn webxr_available(xrsystem: &XrSystem,document: &Document)->Result<Op
 }
 
 #[wasm_bindgen]
-pub async fn create_webxr_session(xrsession: XrSession, gl: WebGl2RenderingContext, program: WebGlProgram){
+pub async fn create_webxr_session(xrsession: XrSession, gl: WebGl2RenderingContext, program: WebGlProgram, performance: Performance){
     let render_state = XrRenderStateInit::new();
     let Ok(webgl_layer) = XrWebGlLayer::new_with_web_gl2_rendering_context(&xrsession, &gl) else{
         console::log_1(&"[Error] Could not create WebGlLayer".into());
@@ -126,6 +190,7 @@ pub async fn create_webxr_session(xrsession: XrSession, gl: WebGl2RenderingConte
     if XrReferenceSpace::instanceof(&reference_space_js){
         let reference_space = XrReferenceSpace::unchecked_from_js(reference_space_js);
         let animation_loop = Rc::new(RefCell::new(None::<Closure<dyn FnMut(f64,XrFrame)>>));
+        let mut fps_tracker = Logger::new(performance);
         //初期状態はNone
         //RefCellはClosureを後で自分自身を参照できるようにするためのラッパー
         //Rcは複数の所有者を持つためのスマートポインタ
@@ -133,6 +198,9 @@ pub async fn create_webxr_session(xrsession: XrSession, gl: WebGl2RenderingConte
         let animation_loop_clone = Rc::clone(&animation_loop);
         let session_clone = xrsession.clone();
         *animation_loop.borrow_mut() = Some(Closure::wrap(Box::new(move |time: f64, frame: XrFrame|{
+            fps_tracker.track_frame();
+            fps_tracker.log_fps();
+            fps_tracker.log_memory_usage();
             render_frame(time, &frame, &reference_space, &session_clone, &gl, &program);
             session_clone.request_animation_frame(animation_loop_clone.borrow().as_ref().unwrap().as_ref().unchecked_ref::<js_sys::Function>());
         }) as Box<dyn FnMut(f64,XrFrame)>));
