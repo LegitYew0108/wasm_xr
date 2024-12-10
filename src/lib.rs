@@ -2,7 +2,7 @@ use wasm_bindgen::prelude::*;
 use futures::stream::StreamExt;
 use web_sys::*;
 use wasm_bindgen_futures::JsFuture;
-use futures::channel::{oneshot, mpsc};
+use futures::channel:: mpsc;
 use gl_matrix::common::*;
 use gl_matrix::{vec3,mat4,quat};
 use std::rc::Rc;
@@ -25,7 +25,9 @@ impl wasm_bindgen::describe::WasmDescribe for GlProgram{
 
 pub struct Logger{
     last_time: f64,
+    first_time: f64,
     frame_count: u32,
+    total_frames: u32,
     performance: Performance,
 }
 
@@ -33,7 +35,9 @@ impl Logger{
     fn new(performance:Performance)->Self{
         Logger{
             last_time: performance.now(),
+            first_time: performance.now(),
             frame_count: 0,
+            total_frames: 0,
             performance,
         }
     }
@@ -42,7 +46,7 @@ impl Logger{
         self.frame_count += 1;
         let now = self.performance.now();
         let elapsed = now - self.last_time;
-
+        self.total_frames += 1;
         if elapsed > 1000.0{
             self.log_fps();
             self.last_time = now;
@@ -53,6 +57,8 @@ impl Logger{
     fn log_fps(&self){
         let fps = self.frame_count as f64 / (self.performance.now() - self.last_time) * 1000.0;
         console::log_1(&format!("FPS: {}", fps).into());
+        let avg_fps = self.total_frames as f64 / (self.performance.now() - self.first_time) * 1000.0;
+        console::log_1(&format!("Average FPS: {}", avg_fps).into());
     }
 
     fn log_memory_usage(&self) {
