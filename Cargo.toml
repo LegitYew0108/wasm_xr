@@ -5,10 +5,10 @@ edition = "2021"
 
 [dependencies]
 futures = "0.3.31"
-js-sys = "0.3.72"
-wasm-bindgen = "0.2.93"
-wasm-bindgen-futures = "0.4.45"
-web-sys = {version="0.3.72", features=['console','Performance','Window','Document','HtmlCanvasElement','HtmlButtonElement','DomPointReadOnly','Element','Response','WebGl2RenderingContext','XrViewport','XrView','WebGlShader','WebGlProgram','WebGlBuffer','WebGlUniformLocation','XrSessionMode','XrSession','XrReferenceSpaceType','XrReferenceSpace','XrFrame','XrInputSource','XrInputSourceArray','XrInputSourceEvent','XrRenderStateInit','XrRenderState','WebGlFramebuffer','XrRigidTransform','Navigator','XrSystem','XrWebGlLayer','XrViewerPose']}
+wasm-bindgen = "=0.2.93"
+js-sys = "0.3.65"
+wasm-bindgen-futures = "0.4.3"
+web-sys = {version="0.3.6", features=['console','Performance','Window','Document','HtmlCanvasElement','HtmlButtonElement','DomPointReadOnly','Element','Response','WebGl2RenderingContext','XrViewport','XrView','WebGlShader','WebGlProgram','WebGlBuffer','WebGlUniformLocation','XrSessionMode','XrSession','XrReferenceSpaceType','XrReferenceSpace','XrFrame','XrInputSource','XrInputSourceArray','XrInputSourceEvent','XrRenderStateInit','XrRenderState','WebGlFramebuffer','XrRigidTransform','Navigator','XrSystem','XrWebGlLayer','XrViewerPose']}
 gl_matrix = "0.0.2"
 
 
