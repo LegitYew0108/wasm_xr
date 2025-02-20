@@ -145,7 +145,7 @@ pub fn render_scene(gl: &WebGl2RenderingContext, view: &XrView, program: &web_sy
     // model行列の設定
     let mut scale = mat4::create();
     let scale_clone = scale;
-    mat4::scale(&mut scale,&scale_clone, &[1.0,1.0,1.0]);
+    mat4::scale(&mut scale,&scale_clone, &[0.3,0.3,0.3]);
 
     let mut rotation = mat4::create();
     let rotation_clone = rotation;
@@ -161,9 +161,13 @@ pub fn render_scene(gl: &WebGl2RenderingContext, view: &XrView, program: &web_sy
     mat4::multiply(&mut model, &model_clone, &rotation);
     mat4::multiply(&mut model, &model_clone, &scale);
 
-    // XrViewをもとにした、view行列の設定
-    let view_vec = view.transform().matrix();
-    let view_array:[f32;16] = view_vec.try_into().unwrap();
+    let view_transform = view.transform();
+    let view_position = view_transform.position();
+    let camera_position = vec3::from_values(-1.0*view_position.x() as f32, -1.0*view_position.y() as f32, -1.0*view_position.z() as f32);
+    let view_direction = view_transform.orientation();
+    let view_quat = quat::from_values(view_direction.x() as f32, view_direction.y() as f32, view_direction.z() as f32, -1.0*view_direction.w() as f32);
+    let mut view_matrix = mat4::create();
+    mat4::from_rotation_translation(&mut view_matrix, &view_quat, &camera_position);
 
     // XrViewをもとにした、projection行列の設定
     let projection_from_view = view.projection_matrix();
@@ -173,7 +177,7 @@ pub fn render_scene(gl: &WebGl2RenderingContext, view: &XrView, program: &web_sy
     let view_location = gl.get_uniform_location(program, "view");
     let projection_location = gl.get_uniform_location(program, "projection");
     gl.uniform_matrix4fv_with_f32_array(model_location.as_ref(), false, &model);
-    gl.uniform_matrix4fv_with_f32_array(view_location.as_ref(), false, &view_array);
+    gl.uniform_matrix4fv_with_f32_array(view_location.as_ref(), false, &view_matrix);
     gl.uniform_matrix4fv_with_f32_array(projection_location.as_ref(), false, &projection);
 
     gl.draw_elements_with_i32(WebGl2RenderingContext::TRIANGLES, 36, WebGl2RenderingContext::UNSIGNED_SHORT, 0);
@@ -284,7 +288,7 @@ pub async fn ready_webgl2_context(window: &Window, document: &Document, gl: WebG
         1.0, 1.0, 0.0, 1.0,      // 色
         0.0, 0.0, 0.0,  // 座標
         1.0, 0.0, 1.0, 1.0,      // 色
-        0.0, 0.5, -0.5,  // 座標
+        0.5, 0.0, -0.5,  // 座標
         1.0, 0.0, 0.0, 1.0,      // 色
         0.5, 0.0, 0.0,  // 座標
         0.0, 1.0, 1.0, 1.0,      // 色
