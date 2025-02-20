@@ -141,17 +141,19 @@ pub fn render_frame(_time: f64, frame: &XrFrame, reference_space: &XrReferenceSp
 
 #[wasm_bindgen]
 pub fn render_scene(gl: &WebGl2RenderingContext, view: &XrView, program: &web_sys::WebGlProgram){
+
+    // model行列の設定
     let mut scale = mat4::create();
     let scale_clone = scale;
     mat4::scale(&mut scale,&scale_clone, &[1.0,1.0,1.0]);
 
     let mut rotation = mat4::create();
     let rotation_clone = rotation;
-    mat4::rotate_z(&mut rotation, &rotation_clone, PI/8.0);
+    mat4::rotate_z(&mut rotation, &rotation_clone, 0.0);
 
     let mut translation = mat4::create();
     let translation_clone = translation;
-    mat4::translate(&mut translation, &translation_clone, &[40.0,0.0,-20.0]);
+    mat4::translate(&mut translation, &translation_clone, &[0.0,0.0,0.0]);
 
     let mut model = mat4::create();
     let model_clone = model;
@@ -159,21 +161,19 @@ pub fn render_scene(gl: &WebGl2RenderingContext, view: &XrView, program: &web_sy
     mat4::multiply(&mut model, &model_clone, &rotation);
     mat4::multiply(&mut model, &model_clone, &scale);
 
-    let view_position = view.transform().position();
-    let camera_position = vec3::from_values(view_position.x() as f32, view_position.y() as f32, view_position.z() as f32);
-    let view_direction = view.transform().orientation();
-    let view_quat = quat::from_values(view_direction.x() as f32, view_direction.y() as f32, view_direction.z() as f32, view_direction.w() as f32);
-    let mut view_matrix = mat4::create();
-    mat4::from_rotation_translation(&mut view_matrix, &view_quat, &camera_position);
+    // XrViewをもとにした、view行列の設定
+    let view_vec = view.transform().matrix();
+    let view_array:[f32;16] = view_vec.try_into().unwrap();
 
+    // XrViewをもとにした、projection行列の設定
     let projection_from_view = view.projection_matrix();
-    let projection:Mat4 = projection_from_view.try_into().unwrap();
+    let projection:[f32; 16] = projection_from_view.try_into().unwrap();
 
     let model_location = gl.get_uniform_location(program, "model");
     let view_location = gl.get_uniform_location(program, "view");
     let projection_location = gl.get_uniform_location(program, "projection");
     gl.uniform_matrix4fv_with_f32_array(model_location.as_ref(), false, &model);
-    gl.uniform_matrix4fv_with_f32_array(view_location.as_ref(), false, &view_matrix);
+    gl.uniform_matrix4fv_with_f32_array(view_location.as_ref(), false, &view_array);
     gl.uniform_matrix4fv_with_f32_array(projection_location.as_ref(), false, &projection);
 
     gl.draw_elements_with_i32(WebGl2RenderingContext::TRIANGLES, 36, WebGl2RenderingContext::UNSIGNED_SHORT, 0);
