@@ -1,3 +1,5 @@
+mod logger;
+use crate::logger::Logger;
 use wasm_bindgen::prelude::*;
 use futures::stream::StreamExt;
 use web_sys::*;
@@ -23,88 +25,25 @@ impl wasm_bindgen::describe::WasmDescribe for GlProgram{
     }
 }
 
-pub struct Logger{
-    last_time: f64,
-    first_time: f64,
-    frame_count: u32,
-    total_frames: u32,
-    performance: Performance,
-}
-
-impl Logger{
-    fn new(performance:Performance)->Self{
-        Logger{
-            last_time: performance.now(),
-            first_time: performance.now(),
-            frame_count: 0,
-            total_frames: 0,
-            performance,
-        }
-    }
-
-    fn track_frame(&mut self){
-        self.frame_count += 1;
-        let now = self.performance.now();
-        let elapsed = now - self.last_time;
-        self.total_frames += 1;
-        if elapsed > 1000.0{
-            self.log_fps();
-            self.last_time = now;
-            self.frame_count = 0;
-        }
-    }
-
-    fn log_fps(&self){
-        let fps = self.frame_count as f64 / (self.performance.now() - self.last_time) * 1000.0;
-        console::log_1(&format!("FPS: {}", fps).into());
-        let avg_fps = self.total_frames as f64 / (self.performance.now() - self.first_time) * 1000.0;
-        console::log_1(&format!("Average FPS: {}", avg_fps).into());
-    }
-
-    fn log_memory_usage(&self) {
-        // メモリ情報の取得
-        if let Ok(memory) = js_sys::Reflect::get(&self.performance, &"memory".into()) {
-            if let Some(memory) = memory.dyn_ref::<js_sys::Object>() {
-                let js_heap_size_limit = js_sys::Reflect::get(memory, &"jsHeapSizeLimit".into())
-                    .unwrap_or_else(|_| 0.into())
-                    .as_f64()
-                    .unwrap_or(0.0);
-
-                let total_js_heap_size = js_sys::Reflect::get(memory, &"totalJSHeapSize".into())
-                    .unwrap_or_else(|_| 0.into())
-                    .as_f64()
-                    .unwrap_or(0.0);
-
-                let used_js_heap_size = js_sys::Reflect::get(memory, &"usedJSHeapSize".into())
-                    .unwrap_or_else(|_| 0.into())
-                    .as_f64()
-                    .unwrap_or(0.0);
-
-                console::log_1(&format!(
-                    "Memory Usage:\nHeap Size Limit: {:.2} MB\nTotal JS Heap Size: {:.2} MB\nUsed JS Heap Size: {:.2} MB",
-                    js_heap_size_limit / 1_048_576.0,
-                    total_js_heap_size / 1_048_576.0,
-                    used_js_heap_size / 1_048_576.0
-                ).into());
-            }
-        }
-    }
-}
-
 #[wasm_bindgen(start)]
 pub async fn run() -> Result<(), JsValue>{
 
+    // ブラウザのオブジェクトを取得
     let window = web_sys::window().expect("no global `window` exists");
     let document = window.document().expect("should have a document on window");
-
     let performance = window.performance().expect("should have a performance on window");
-    let (mut button_tx,mut button_rx) = mpsc::channel::<()>(32);
     let body = document.body().expect("document doesn't have body.");
     let button = document.create_element("button")?.dyn_into::<HtmlButtonElement>()?;
+
+    // XRのスタートボタンの押し待ち用mpsc
+    let (mut button_tx,mut button_rx) = mpsc::channel::<()>(32);
+
+    // ボタンの設定
     button.set_inner_text("Start WebXR");
     let button_clone = button.clone();
     let onclick_func = Closure::wrap(Box::new(move ||{
         button_clone.set_inner_text("WebXR is starting...");
+        // 送れるまでbutton_txを送る
         loop{
             let Err(_) = button_tx.try_send(()) else{
                 break;
@@ -116,12 +55,15 @@ pub async fn run() -> Result<(), JsValue>{
 
     button_rx.next().await;
     
+    // XRSystemを取得して、環境でwebXRが実行可能であるか確認
     let xrsystem = window.navigator().xr();
     let Some(xrsession) = webxr_available(&xrsystem,&document).await? else{
         console::log_1(&"WebXR is not available".into());
         display_error_page(&document, "WebXR is not available").await?;
         return Ok(());
     };
+
+    // webgl2のコンテキストを作成し、webXRに対応させる
     let gl = create_webgl2_context(&document).await?;
     console::log_1(&"created webgl2 context".into());
     wasm_bindgen_futures::JsFuture::from(gl.make_xr_compatible()).await?;
@@ -131,51 +73,6 @@ pub async fn run() -> Result<(), JsValue>{
     
     create_webxr_session(xrsession, gl_program.gl, gl_program.program,performance).await;
     Ok(())
-}
-
-#[wasm_bindgen]
-pub async fn display_error_page(document: &Document, error_msg: &str) -> Result<(), JsValue>{
-    let body = document.body().expect("document doesn't have body.");
-    let default_val = document.create_element("h1")?;
-    default_val.set_text_content(Some("[Error Page]"));
-    default_val.set_text_content(Some(error_msg));
-    let _ = body.append_child(&default_val)?;
-    Ok(())
-}
-
-
-#[wasm_bindgen]
-pub async fn webxr_available(xrsystem: &XrSystem,document: &Document)->Result<Option<XrSession>,JsValue>{
-    console::log_1(&"Starting WebXR Support Check".into());
-    if let Some(is_supported) = JsFuture::from(
-        xrsystem.is_session_supported(
-            XrSessionMode::ImmersiveVr
-        )
-    ).await.unwrap().as_bool(){
-        if is_supported{
-            console::log_1(&"WebXR ImmersiveVr is Available!".into());
-            let session_jsval = JsFuture::from(xrsystem.request_session(XrSessionMode::ImmersiveVr)).await?;
-            if XrSession::instanceof(&session_jsval){
-                let xrsession = XrSession::unchecked_from_js(session_jsval);
-                Ok(Some(xrsession))
-            }
-            else{
-                console::log_1(&"[Error] WebXR ImmersiveVr is Available but Session is not instance of Xrsession".into());
-                display_error_page(document, "ImmersiveVr is Available but Session is not instance of Xrsession").await?;
-                Err(JsValue::null())
-            }
-        }
-        else{
-            console::log_1(&"WebXR ImmersiveVr is not Available.".into());
-            display_error_page(document, "ImmersiveVr is not Available.").await?;
-            Ok(None)
-        }
-    }
-    else{
-        console::log_1(&"[Error] WebXR Support unknown.".into());
-        display_error_page(document, "WebXR Support unknown.").await?;
-        Err(JsValue::null())
-    }
 }
 
 #[wasm_bindgen]
@@ -214,7 +111,6 @@ pub async fn create_webxr_session(xrsession: XrSession, gl: WebGl2RenderingConte
         //最初のアニメーションフレームをリクエスト
         let _animation_frame_request_id = xrsession.request_animation_frame(animation_loop.borrow().as_ref().unwrap().as_ref().unchecked_ref::<js_sys::Function>());
     }
-
 }
 
 #[wasm_bindgen]
@@ -294,29 +190,6 @@ pub struct Shader{
     fragment_shader: Option<String>,
 }
 
-#[wasm_bindgen]
-pub async fn create_webgl2_context(document: &Document)->Result<WebGl2RenderingContext,JsValue>{
-    console::log_1(&"Try to get canvas".into());
-    let Some(canvas) = document.query_selector("canvas")? else{
-        console::log_1(&"[Error] canvas was none. Please check html file.".into());
-        display_error_page(document,"canvas was none.").await?;
-        return Err(JsValue::null());
-    };
-    let canvas = canvas.dyn_into::<web_sys::HtmlCanvasElement>()?;
-    console::log_1(&"Got canvas".into());
-
-    canvas.set_width(1920);
-    canvas.set_height(1080);
-
-    let Some(gl) = canvas.get_context("webgl2")? else{
-        console::log_1(&"[Error] Could not get webgl2 context.".into());
-        display_error_page(document,"Could not get webgl2 context.").await?;
-        return Err(JsValue::null());
-    };
-
-    let gl = gl.dyn_into::<WebGl2RenderingContext>()?;
-    Ok(gl)
-}
 
 #[wasm_bindgen]
 pub async fn ready_webgl2_context(window: &Window, document: &Document, gl: WebGl2RenderingContext)->Result<GlProgram ,JsValue>{
@@ -399,36 +272,36 @@ pub async fn ready_webgl2_context(window: &Window, document: &Document, gl: WebG
     const COLOR_OFFSET: i32 = VERTEX_SIZE * FLOAT32_BYTES_PER_ELEMENT;
 
     let vertices:[f32;56] = [
-        0.0, 30.0, 0.0,  // 座標
+        0.0, 0.5, -0.5,  // 座標
         1.0, 1.0, 1.0, 1.0,      // 色
-        0.0, 30.0, 30.0,  // 座標
+        0.0, 0.5, 0.0,  // 座標
         0.0, 1.0, 1.0, 1.0,      // 色
-        30.0, 30.0, 30.0,  // 座標
+        0.5, 0.5, -0.5,  // 座標
         1.0, 0.0, 1.0, 1.0,      // 色
-        30.0, 30.0, 0.0,  // 座標
+        0.5, 0.5, 0.0,  // 座標
         0.0, 1.0, 0.0, 1.0,      // 色
-        0.0, 0.0, 0.0,  // 座標
+        0.0, 0.0, -0.5,  // 座標
         1.0, 1.0, 0.0, 1.0,      // 色
-        0.0, 0.0, 30.0,  // 座標
+        0.0, 0.0, 0.0,  // 座標
         1.0, 0.0, 1.0, 1.0,      // 色
-        30.0, 0.0, 30.0,  // 座標
+        0.0, 0.5, -0.5,  // 座標
         1.0, 0.0, 0.0, 1.0,      // 色
-        30.0, 0.0, 0.0,  // 座標
+        0.5, 0.0, 0.0,  // 座標
         0.0, 1.0, 1.0, 1.0,      // 色
     ];
     let indices: [u16; 36] =[
-        0, 2, 1,
-        0, 3, 2,
-        0, 4, 1,
-        1, 5, 4,
-        1, 2, 5,
-        2, 6, 5,
-        2, 3, 6,
-        3, 7, 6,
-        3, 0, 7,
-        0, 4, 7,
-        4, 5, 7,
-        5, 6, 7,
+        0, 1, 2,
+        1, 3, 2,
+        1, 5, 3,
+        3, 5, 7,
+        3, 7, 2,
+        2, 7, 6,
+        0, 2, 6,
+        0, 6, 4,
+        0, 5, 1,
+        0, 4, 5,
+        7, 5, 6,
+        5, 4, 6,
     ];
 
     let interleaved_buffer = create_f32_buffer(WebGl2RenderingContext::ARRAY_BUFFER, &vertices, &gl).await?;
@@ -518,4 +391,75 @@ pub async fn create_u16_buffer(buffer_type: u32, typed_data_array: &[u16], gl: &
     gl.bind_buffer(buffer_type, None);
 
     Ok(buffer)
+}
+
+// webXRの使用可否を確認して、webXRセッションを返す関数
+#[wasm_bindgen]
+pub async fn webxr_available(xrsystem: &XrSystem,document: &Document)->Result<Option<XrSession>,JsValue>{
+    console::log_1(&"Starting WebXR Support Check".into());
+    if let Some(is_supported) = JsFuture::from(
+        xrsystem.is_session_supported(
+            XrSessionMode::ImmersiveVr
+        )
+    ).await.unwrap().as_bool(){
+        if is_supported{
+            console::log_1(&"WebXR ImmersiveVr is Available!".into());
+            let session_jsval = JsFuture::from(xrsystem.request_session(XrSessionMode::ImmersiveVr)).await?;
+            if XrSession::instanceof(&session_jsval){
+                let xrsession = XrSession::unchecked_from_js(session_jsval);
+                Ok(Some(xrsession))
+            }
+            else{
+                console::log_1(&"[Error] WebXR ImmersiveVr is Available but Session is not instance of Xrsession".into());
+                display_error_page(document, "ImmersiveVr is Available but Session is not instance of Xrsession").await?;
+                Err(JsValue::null())
+            }
+        }
+        else{
+            console::log_1(&"WebXR ImmersiveVr is not Available.".into());
+            display_error_page(document, "ImmersiveVr is not Available.").await?;
+            Ok(None)
+        }
+    }
+    else{
+        console::log_1(&"[Error] WebXR Support unknown.".into());
+        display_error_page(document, "WebXR Support unknown.").await?;
+        Err(JsValue::null())
+    }
+}
+
+// webGL2の使用可否を確認して、コンテキストを返す関数
+#[wasm_bindgen]
+pub async fn create_webgl2_context(document: &Document)->Result<WebGl2RenderingContext,JsValue>{
+    console::log_1(&"Try to get canvas".into());
+    let Some(canvas) = document.query_selector("canvas")? else{
+        console::log_1(&"[Error] canvas was none. Please check html file.".into());
+        display_error_page(document,"canvas was none.").await?;
+        return Err(JsValue::null());
+    };
+    let canvas = canvas.dyn_into::<web_sys::HtmlCanvasElement>()?;
+    console::log_1(&"Got canvas".into());
+
+    canvas.set_width(1920);
+    canvas.set_height(1080);
+
+    let Some(gl) = canvas.get_context("webgl2")? else{
+        console::log_1(&"[Error] Could not get webgl2 context.".into());
+        display_error_page(document,"Could not get webgl2 context.").await?;
+        return Err(JsValue::null());
+    };
+
+    let gl = gl.dyn_into::<WebGl2RenderingContext>()?;
+    Ok(gl)
+}
+
+// webXR等が私用できなかったときにエラーページを表示する関数
+#[wasm_bindgen]
+pub async fn display_error_page(document: &Document, error_msg: &str) -> Result<(), JsValue>{
+    let body = document.body().expect("document doesn't have body.");
+    let default_val = document.create_element("h1")?;
+    default_val.set_text_content(Some("[Error Page]"));
+    default_val.set_text_content(Some(error_msg));
+    let _ = body.append_child(&default_val)?;
+    Ok(())
 }
